@@ -1,26 +1,48 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
+import { InjectRepository } from '@nestjs/typeorm';
+import { Repository } from 'typeorm';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
+import { User } from './entities/user.entity';
+
+import * as bcrypt from 'bcryptjs'
+import { isStrongPassword } from 'class-validator';
 
 @Injectable()
 export class UsersService {
-  create(createUserDto: CreateUserDto) {
-    return 'This action adds a new user';
+
+  constructor(@InjectRepository(User) private data: Repository<User>) {}
+
+  async create(dto: CreateUserDto) {
+    const salt = process.env["HASH_SALT"]||12;
+    const hash = await bcrypt.hash(dto.password, salt);
+    return this.data.save({...dto, hash});
   }
 
-  findAll() {
-    return `This action returns all users`;
+  findAll(): Promise<User[]> {
+    return this.data.find();
   }
 
-  findOne(id: number) {
-    return `This action returns a #${id} user`;
+  findOne(id: number): Promise<User> {
+    return this.data.findOneBy({id});
   }
 
-  update(id: number, updateUserDto: UpdateUserDto) {
-    return `This action updates a #${id} user`;
+  findOneByEmail(email: string): Promise<User> {
+    return this.data.findOneBy({email});
   }
 
-  remove(id: number) {
-    return `This action removes a #${id} user`;
+  async update(id: number, dto: UpdateUserDto): Promise<User> {
+    const salt = process.env["HASH_SALT"]||12;
+    const {password, ...rest} = dto;
+    const hash = await bcrypt.hash(password, salt);
+    const done = await this.data.update(id, {...rest, hash});
+    if (done.affected == 1)
+      return this.findOne(id);
+    throw new NotFoundException();
+  }
+
+  async remove(id: number): Promise<number> {
+    const done = await this.data.delete(id);
+    return done.affected;
   }
 }
